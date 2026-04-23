@@ -1,0 +1,3 @@
+.env
+.history
+docker/mysql/data/
