@@ -1,58 +1,69 @@
 version: '3.8'
-# mysqlのテーブルやらなんやらを保存するやつ
+
 volumes:
   mysql-volume: 
-# 各コンテナの設定
+
+networks:
+  app-network:
+    driver: bridge
+
 services:
-  # phpサーバー
+  # PHPサーバー
   php:
-    build: # Dockerfileで設定する
+    build:
       context: .
       dockerfile: ./docker/php/Dockerfile
-    volumes: # ./src/に入れたファイルが/usr/share/nginx/htmlに同期される。
-      - ./src:/usr/share/nginx/html
-  # nginxサーバー
+    volumes:
+      - ./src:/var/www/html
+    restart: always
+
+  # Nginxサーバー
   web:
-    build: # Dockerfileで設定する
+    build:
       context: .
       dockerfile: ./docker/nginx/Dockerfile
-    ports: # ポートの設定(後で.envでする)
-      - ${WEB_PORT}:80
-    depends_on: # 先にphpサーバーを立ち上げる
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
       - php
-    volumes: # ./src/に入れたファイルが/usr/share/nginx/htmlに同期される。
-      - ./src/:/usr/share/nginx/html
+    volumes:
+      - ./src:/var/www/html  # PHP側とパスを合わせました
+    restart: always
+
   # データベースサーバー
   db:
-    build: # Dockerfileで設定する
+    build:
       context: .
       dockerfile: ./docker/mysql/Dockerfile
-    ports: # ポートの設定(後で.envでする)
-      - ${DB_PORT}:3306
-    environment: # ユーザとかパスワードとかの設定(後で.envでする)
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-db_mydb}
+      MYSQL_USER: ${DB_USER:-db_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
       TZ: 'Asia/Tokyo'
-    volumes: # mysqlのテーブルやらなんやらを保存する
+    volumes:
       - ./docker/mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
       - ./docker/mysql/conf.d:/etc/mysql/conf.d
-      - ./docker/mysql/data:/var/lib/mysql
-  # PHPMyAdminサーバー
-  phpmyadmin: # デフォルトのままで不都合ないのでDockerHubにあるイメージをそのまま使う
+      - mysql-volume:/var/lib/mysql # 名前付きボリュームに統一して永続化を安定させます
+    restart: always
+
+  # PHPMyAdmin
+  phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
     environment:
-      PMA_HOST: 'db' # ホストはデータベースサーバーのサービス名(26行目)
-      PMA_USER: 'root' # デフォルトでログインしているユーザー(今回はルートユーザー)
-      PMA_PASSWORD: ${DB_ROOT_PASSWORD} # 上記ユーザーのパスワード(今回はルートユーザーのパスワード)
-    ports: # ポートの設定(後で.envでする)
-    - ${PMA_PORT}:80
+      PMA_HOST: db
+      PMA_USER: root
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    depends_on:
+      - db
+
   # メール確認用サーバー
-  # とりあえずメールがきちんと送信できたか見たいだけなので、簡単に導入できるMailHogを使っている。
-  # 外部にメール送るにはIPアドレスの許可やらその他いろいろ面倒くさいので今回はやらない。
   mailhog:
     image: mailhog/mailhog
-    ports: # ポートの設定(後で.envでする)
-      - ${MAIL_PORT}:8025
+    ports:
+      - "${MAIL_PORT:-8025}:8025"
       - "1025:1025"
